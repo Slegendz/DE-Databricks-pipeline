@@ -1,10 +1,35 @@
-# 📊 Data Engineering Mini Project Documentation
+# Data Engineering Pipeline Documentation
 
-## Assumptions & Data Quality Rules
+## Medallion Architecture (Bronze → Silver → Gold)
 
 ---
 
-# 🏗️ 1. Architecture Overview
+## Prepared By
+
+**Name:** Sachin
+
+**Project Type:** Data Engineering Mini Project
+
+**Architecture:** Medallion (Lakehouse)
+
+**Technology Stack:** PySpark, Delta Lake, Azure Databricks
+
+---
+
+# 1. Project Overview
+
+This project implements a **scalable data pipeline** using the Medallion Architecture to transform raw data into **business-ready insights**.
+
+The pipeline is designed to ensure:
+
+* Data reliability
+* Scalability
+* Auditability
+* Clear separation of concerns
+
+---
+
+# 2. Architecture Design
 
 The data pipeline follows a **Medallion Architecture**:
 
@@ -12,271 +37,286 @@ The data pipeline follows a **Medallion Architecture**:
 * **Silver Layer** → Data cleaning & standardization
 * **Gold Layer** → Business-ready data (DIM, FACT, KPIs)
 
----
-
-# 🥉 2. Bronze Layer (Raw Ingestion)
-
-### 📁 File: `bronze/ingest_bronze.ipynb`
-
-## ✅ Assumptions
-
-1. Source data is available in `azure_blob_storage` catalog
-2. All tables are ingested **as-is without transformation**
-3. Schema is assumed to be **consistent at source**
-4. No filtering, no validation at this stage
+```
+Source (Azure Blob Storage)
+        ↓
+Bronze Layer (Raw Data)
+        ↓
+Silver Layer (Cleaned & Standardized Data)
+        ↓
+Gold Layer (Dimensional Model + KPIs + Business Logic)
+```
 
 ---
 
-## ⚙️ Logic Implemented
+# 🥉 3. Bronze Layer (Raw Ingestion)
 
-* Dynamically loads all tables:
+## File
 
-  ```python
-  tables = [t.name for t in spark.catalog.listTables("azure_blob_storage")]
-  ```
+`bronze/ingest_bronze.ipynb`
+
+## Objective
+
+To ingest raw data from source systems **without any transformation**.
+
+* Dynamically reads all tables from source catalog:
+
+```python
+tables = [t.name for t in spark.catalog.listTables("azure_blob_storage")]
+```
+
 * Adds ingestion timestamp:
 
-  ```python
-  df = df.withColumn("ingestion_ts", current_timestamp())
-  ```
+```python
+df = df.withColumn("ingestion_ts", current_timestamp())
+```
+
 * Stores as Delta tables:
 
-  ```
-  workspace.bronze.bronze_<table_name>
-  ```
+```
+workspace.bronze.bronze_<table_name>
+```
+
+## Assumptions
+
+* Source data schema is consistent
+* Data may contain errors, nulls, or duplicates
+* No transformations are applied
+* All tables are ingested **as-is without transformation**
+* No filtering, no validation at this stage
+
+## Data Quality Rules
+
+* No validation performed
+* Raw data preserved for traceability
+* Schema drift allowed
+* Ingestion timestamp ensures auditability
 
 ---
 
-## 🧪 Data Quality Rules (Bronze)
+# 🥈 4. Silver Layer (Data Cleaning & Standardization)
 
-✔ No validation applied
-✔ Raw data preserved for audit
-✔ Schema drift tolerated
-✔ Historical trace maintained via `ingestion_ts`
+## Objective
 
----
+To clean, validate, and standardize data before business use.
 
-# 🥈 3. Silver Layer (Clean & Standardized Data)
 
-## ✅ Assumptions
+## Transformations Applied
 
-1. Data may contain:
+### 1. Date Standardization
 
-   * Null values
-   * Incorrect formats (e.g., dates as strings)
-   * Duplicates
-2. All transformations happen here (NOT in Bronze or Gold)
-3. Data is standardized before analytics
+* Convert string dates to proper format:
 
----
+```python
+to_date(col("order_date"), "dd-MM-yyyy")
+```
 
-## ⚙️ Key Transformations
+### 2. Null Handling
 
-### 🔹 1. Date Standardization
-
-* Convert string → date format:
-
-  ```python
-  to_date(col("order_date"), "dd-MM-yyyy")
-  ```
-
----
-
-### 🔹 2. Null Handling
-
-* Remove or filter invalid rows where critical fields are null:
+* Remove or filter records with null values in:
 
   * `order_id`
   * `customer_id`
   * `product_id`
+  * `order_status`
+  * `customer_email`
+  * `customer_name`
 
----
-
-### 🔹 3. Deduplication
+### 3. Deduplication
 
 * Remove duplicate records using primary keys
 
----
+### 4. Data Validity
 
-### 🔹 4. Data Normalization
+* Is_valid column for checking valid records
+* Is_invalid_status to check if status is valid and present
 
-* Standardize text fields:
+## Assumptions
 
-  * Lowercase emails
-  * Proper case names
+* Data inconsistencies exist in raw layer
+* All transformations must be handled in Silver layer
+* Silver acts as a trusted data source
+* Data may contain null vaues, incorrect formats, duplicates, orphan records
 
----
+## Data Quality Rules
 
-### 🔹 5. Exchange Rate Preparation
-
-* Ensure:
-
-  * `currency` is valid
-  * `rate_to_usd` exists for each date
-
----
-
-## 🧪 Data Quality Rules (Silver)
-
-✔ No nulls in primary keys
-✔ Dates are properly formatted
-✔ No duplicate records
-✔ Currency and exchange rates validated
-✔ Invalid records removed or filtered
+* No nulls in primary keys
+* Dates must be correctly parsed
+* No duplicate records
+* Valid currency mappings
+* Invalid records are filtered
 
 ---
 
-# 🥇 4. Gold Layer (Business Layer)
+# 🥇 5. Gold Layer (Business Layer)
 
-## ✅ Assumptions
+## Objective
 
-1. Data is clean and analytics-ready
-2. Business logic is applied only here
-3. Currency normalization is required
+To provide **analytics-ready datasets** using dimensional modeling.
 
----
 
-## ⭐ Data Modeling
+## Data Model
 
-### 📌 Dimension Tables
+### Dimension Tables
 
 * `dim_customer`
 * `dim_product`
 * `dim_date`
+* `dim_country`
 
-### 📌 Fact Table
+###  Fact Table
 
 * `fact_orders`
 
----
+---- 
 
-## ⚙️ Key Transformations
+## Key Business Transformations
 
-### 🔹 1. Currency Conversion (USD Standardization)
+### 1. Currency Standardization (USD)
 
-```python
-revenue_usd = quantity * price * rate_to_usd
+All revenue is converted to USD:
+
+```
+revenue_usd = quantity × price × rate_to_usd
 ```
 
-✔ Ensures consistent global reporting
-✔ Applied in **fact table only**
+* Ensures global consistency
+* Applied at fact table level
+
+### 2. Status Handling
+
+All order statuses are preserved:
+
+* Pending
+* Completed
+* Shipped
+* Cancelled
+
+* No filtering in fact layer
+* Enables flexible KPI calculations
+
+### 3. Country Attribution
+
+Revenue is attributed using:
+
+```
+orders.country
+```
+
+* Represents actual transaction location
+* Used for regional performance analysis
+
+## Assumptions
+
+* Silver data is clean and reliable
+* Exchange rates are accurate
+* Fact table contains all transactional data
+* Business logic is applied only here
+
+## Data Quality Rules
+
+* Revenue must be greater than 0
+* Foreign keys must be valid
+* No nulls in critical fields
+* Valid joins across tables
+* Exchange rates must exist
 
 ---
 
-### 🔹 2. Status Handling
+# 6. KPI Layer
 
-* All statuses retained:
+## Objective
 
-  * pending
-  * completed
-  * shipped
-  * cancelled
+To derive business insights from the Gold layer.
 
-✔ No filtering in fact table
-✔ KPI layer controls business logic
+## KPIs Implemented
 
----
+### 1. Revenue Metrics
 
-### 🔹 3. Country Attribution
+* Total Revenue (USD)
+* Revenue by Country
+* Revenue by Channel
 
-* Revenue is calculated using:
+✔ Only **completed orders** are considered
 
-  ```text
-  orders.country
-  ```
 
-✔ Represents transaction location
-✔ Not based on customer or product country
+### 2. Customer Metrics
 
----
+* Customer Acquisition (monthly)
+* Active Customers
 
-## 🧪 Data Quality Rules (Gold)
+Based on first purchase date
 
-✔ Revenue must be > 0
-✔ Foreign keys must exist
-✔ Exchange rate must be available
-✔ All joins must be valid
-✔ No nulls in critical analytical fields
+### 3. Order Metrics
 
----
+* Completed Order Rate
+* Average Order Value (AOV)
 
-# 📊 5. KPI Layer Assumptions
+### 4. Product Metrics
 
-## 🔹 Revenue Calculation
+* Top Performing Products
 
-* Only **completed orders** are considered:
+### 5. Data Quality Score
 
-  ```text
-  Revenue = SUM(revenue_usd WHERE status = 'completed')
-  ```
+Defined as:
 
----
+```
+Data Quality Score = Valid Records / Total Records
+```
 
-## 🔹 Customer Acquisition
+Valid records must:
 
-* Based on:
+* Have no null keys
+* Contain valid revenue
+* Pass all integrity checks
 
-  ```text
-  First order date of each customer
-  ```
 
----
+# 7. Key Design Decisions
 
-## 🔹 Data Quality Score
+## Medallion Architecture
 
-* Defined as:
+Ensures scalability and modularity
 
-  ```text
-  Valid Records / Total Records
-  ```
-
-Where valid records satisfy:
-
-* No null keys
-* Valid revenue
-* Proper joins
-
----
-
-# ⚠️ 6. Key Design Decisions
-
-### ✔ Separation of Layers
+## Separation of Concerns
 
 * Bronze → Raw
 * Silver → Clean
 * Gold → Business
 
----
+## Currency Conversion in Gold
 
-### ✔ Currency Handling in Gold
+* Avoids repeated calculations
+* Ensures consistency across KPIs
 
-* Avoids repeated computation
-* Ensures consistent KPIs
+## Fact Table Stores All Records
 
----
-
-### ✔ Fact Table Stores All Data
-
-* No filtering applied
+* No filtering
 * Maintains auditability
 
----
+## KPI Layer Controls Logic
 
-### ✔ KPI Layer Controls Business Logic
-
-* Flexible
-* Scalable
+* Flexible business rules
 * Easy to modify
 
+--- 
+
+# 8. Conclusion
+
+This pipeline provides:
+
+* Scalable data processing
+* Clean and reliable datasets
+* Accurate business metrics
+* Strong data governance
+
+The design follows **industry best practices** and is suitable for real-world analytics and reporting systems.
+
 ---
 
-# 🏆 Conclusion
+# 9. Future Enhancements
 
-This pipeline ensures:
-
-✔ Data reliability
-✔ Scalability
-✔ Business accuracy
-✔ Clear separation of concerns
-
-The design follows **industry-standard medallion architecture** and supports efficient analytical querying and reporting.
+* Incremental data processing
+* Slowly Changing Dimensions (SCD Type 2)
+* Data validation frameworks
+* Real-time streaming pipelines
+* Dashboard integration (Power BI / Tableau)
