@@ -6,13 +6,13 @@
 
 ## Prepared By
 
-**Name:** Sachin
+**Name:** Sachin Negi (INT260)
 
 **Project Type:** Data Engineering Mini Project
 
 **Architecture:** Medallion (Lakehouse)
 
-**Technology Stack:** PySpark, Delta Lake, Azure Databricks
+**Technology Stack:** PySpark, Delta Lake, Azure Data Lake, Databricks
 
 ---
 
@@ -187,10 +187,10 @@ revenue_usd = quantity × price × rate_to_usd
 
 All order statuses are preserved:
 
-* Pending
-* Completed
-* Shipped
-* Cancelled
+* `Pending`
+* `Completed`
+* `Shipped`
+* `Cancelled`
 
 * No filtering in fact layer
 * Enables flexible KPI calculations
